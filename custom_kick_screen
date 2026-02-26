@@ -1,0 +1,273 @@
+--[[
+    CUSTOM KICK SCREEN OVERRIDE (FIXED/DEBUG VERSION)
+    Instructions:
+    1. IMAGE_ID: 
+       - Use "rbxassetid://ID" if you uploaded it to Roblox.
+       - Use "filename.png" if you put the file in your executor's 'workspace' folder.
+    2. Run this script.
+    3. Type `_G.TestKick()` in your executor to preview the UI without kicking.
+--]]
+--[[
+    FINAL JUJU-STYLE KICK SCREEN OVERRIDE (REPLICA)
+    
+    Features:
+    - Full ErrorPrompt Suppression (No default Roblox box)
+    - Juju Side-Text & Logo Layout
+    - Smooth Snappy Animations (Circular Easing)
+    - Functional Rejoin Button
+    - Auto-Lighting Fix (Removes Blur/ColorEffects)
+    
+    Requirements:
+    - Place "logo.png" (icon) and "2.png" (background) in your executor's workspace folder.
+--]]
+
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local GuiService = game:GetService("GuiService")
+local TeleportService = game:GetService("TeleportService")
+local Lighting = game:GetService("Lighting")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local localPlayer = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+local mouse = localPlayer:GetMouse()
+
+-- File Loading Helper
+local function getAsset(file)
+    if isfile(file) then
+        return getcustomasset(file)
+    end
+    -- Fallback for testing if files aren't there
+    return "rbxassetid://0" 
+end
+
+local logoAsset = getAsset("logo.png") -- Look in root for logo
+local backgroundAsset = getAsset("juju recode/assets/2.png") -- Look in subfolder for background
+
+-- Flag to prevent multiple UIs
+_G.customKickActive = false
+
+-- ANIMATION HELPER (Replica of Juju's tween)
+local function tween(object, goal, duration)
+    local info = TweenInfo.new(duration or 0.4, Enum.EasingStyle.Circular, Enum.EasingDirection.Out)
+    local t = TweenService:Create(object, info, goal)
+    t:Play()
+    return t
+end
+
+-- UI REPLICA FUNCTION
+local function createJujuUI(rawMessage)
+    if _G.customKickActive then return end
+    _G.customKickActive = true
+
+    -- Suppression Loop (Hides the default box)
+    task.spawn(function()
+        while task.wait(0.1) do
+            GuiService:ClearError()
+        end
+    end)
+
+    -- Detect Moderation Status
+    local message = rawMessage or "You have been disconnected."
+    local isRejoining = message:find("Moderation message: R..")
+    local headerText = "you've been disconnected"
+    if isRejoining then headerText = "now rejoining..." end
+
+    -- Clean Lighting
+    for _, effect in pairs(Lighting:GetChildren()) do
+        if effect:IsA("BlurEffect") or effect:IsA("ColorCorrectionEffect") then
+            effect:Destroy()
+        end
+    end
+
+    -- MAIN UI
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "JujuKickUI"
+    ScreenGui.IgnoreGuiInset = true
+    ScreenGui.DisplayOrder = 9999999
+    
+    local parent = gethui and gethui() or CoreGui
+    ScreenGui.Parent = parent
+
+    -- Background
+    local Background = Instance.new("ImageLabel")
+    Background.Name = "Background"
+    Background.Size = UDim2.new(1, 0, 1, 0) -- Fixed size
+    Background.Position = UDim2.new(0.5, 0, 0.5, 0)
+    Background.AnchorPoint = Vector2.new(0.5, 0.5)
+    Background.Image = backgroundAsset
+    Background.ImageTransparency = 1
+    Background.ScaleType = Enum.ScaleType.Stretch -- Use stretch mode
+    Background.Parent = ScreenGui
+
+    -- Dark Overlay
+    local Overlay = Instance.new("Frame")
+    Overlay.Size = UDim2.new(1.1, 0, 1.1, 0) -- Cover the over-sized background
+    Overlay.Position = UDim2.new(0.5, 0, 0.5, 0)
+    Overlay.AnchorPoint = Vector2.new(0.5, 0.5)
+    Overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    Overlay.BackgroundTransparency = 1
+    Overlay.Parent = Background
+
+    -- Logo (Starts centered then moves left)
+    local Logo = Instance.new("ImageLabel")
+    Logo.Name = "Logo"
+    Logo.Size = UDim2.new(0, 90, 0, 90) -- Slightly smaller logo
+    Logo.Position = UDim2.new(0.5, -45, 0.45, -45) -- Match logo size
+    Logo.AnchorPoint = Vector2.new(0, 0)
+    Logo.BackgroundTransparency = 1
+    Logo.Image = logoAsset
+    Logo.ImageTransparency = 1
+    Logo.ZIndex = 10
+    Logo.Parent = ScreenGui
+
+    -- Header (Connected to Logo)
+    local Header = Instance.new("TextLabel")
+    Header.Name = "Header"
+    Header.Size = UDim2.new(0, 400, 0, 40)
+    Header.Position = UDim2.new(1, 15, 0.5, -20) -- To the right of logo
+    Header.BackgroundTransparency = 1
+    Header.Text = headerText
+    Header.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Header.TextSize = 24
+    Header.Font = Enum.Font.GothamBold
+    Header.TextXAlignment = Enum.TextXAlignment.Left
+    Header.TextTransparency = 1
+    Header.ZIndex = 11
+    Header.Parent = Logo
+
+    -- Reason Label
+    local Reason = Instance.new("TextLabel")
+    Reason.Name = "Reason"
+    Reason.Size = UDim2.new(0, 600, 0, 100)
+    Reason.Position = UDim2.new(0.5, -300, 0.55, 20)
+    Reason.BackgroundTransparency = 1
+    Reason.Text = '"' .. message .. '"'
+    Reason.TextColor3 = Color3.fromRGB(180, 180, 180)
+    Reason.TextSize = 16
+    Reason.Font = Enum.Font.Gotham
+    Reason.TextWrapped = true
+    Reason.TextTransparency = 1
+    Reason.ZIndex = 11
+    Reason.Parent = ScreenGui
+
+    -- Rejoin Button (Modified Juju style)
+    local RejoinFrame = Instance.new("TextButton")
+    RejoinFrame.Name = "Rejoin"
+    RejoinFrame.Size = UDim2.new(0, 120, 0, 30)
+    RejoinFrame.Position = UDim2.new(1, 15, 0.5, 20) -- Below header relative to logo
+    RejoinFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    RejoinFrame.BackgroundTransparency = 1 -- Animate to 0.5
+    RejoinFrame.Text = "rejoin"
+    RejoinFrame.TextColor3 = Color3.fromRGB(255, 255, 255)
+    RejoinFrame.TextTransparency = 1 -- Animate to 0.4
+    RejoinFrame.Font = Enum.Font.GothamBold
+    RejoinFrame.TextSize = 14
+    RejoinFrame.ZIndex = 12
+    RejoinFrame.Parent = Logo
+
+    -- Rounding for button
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0, 6)
+    UICorner.Parent = RejoinFrame
+
+    -- Button Logic
+    RejoinFrame.MouseEnter:Connect(function()
+        tween(RejoinFrame, {BackgroundTransparency = 0.3, TextTransparency = 0}, 0.2)
+    end)
+    RejoinFrame.MouseLeave:Connect(function()
+        tween(RejoinFrame, {BackgroundTransparency = 0.5, TextTransparency = 0.4}, 0.2)
+    end)
+    RejoinFrame.MouseButton1Click:Connect(function()
+        Header.Text = "rejoining server..."
+        RejoinFrame.Visible = false
+        task.wait(0.2)
+        TeleportService:Teleport(game.PlaceId)
+    end)
+
+    -- START ANIMATION SEQUENCE
+    task.spawn(function()
+        -- Fade in Background & Settle Stretch
+        tween(Background, {ImageTransparency = 0}, 0.8)
+        tween(Overlay, {BackgroundTransparency = 0.2}, 0.8) -- Slightly brighter balance
+        task.wait(0.6)
+
+        -- Fade in Logo
+        tween(Logo, {ImageTransparency = 0.4, Position = UDim2.new(0.5, -45, 0.5, -45)}, 0.4)
+        task.wait(0.4)
+
+        -- Slide Logo Left & Pop Text
+        tween(Logo, {Position = UDim2.new(0.5, -180, 0.5, -45)}, 0.4)
+        task.wait(0.2)
+        
+        tween(Header, {TextTransparency = 0.4}, 0.4)
+        tween(RejoinFrame, {BackgroundTransparency = 0.5, TextTransparency = 0.4}, 0.4)
+        task.wait(0.2)
+
+        -- Fade in Reason
+        tween(Reason, {TextTransparency = 0.4, Position = UDim2.new(0.5, -300, 0.55, 0)}, 0.4)
+    end)
+
+    return ScreenGui
+end
+
+-- SUPPRESSION HOOK
+-- This catches the actual Roblox box being added to CoreGui
+local robloxGui = CoreGui:WaitForChild("RobloxGui", 5)
+if robloxGui then
+    robloxGui.ChildAdded:Connect(function(child)
+        if child.Name == "ErrorPrompt" then
+            local messageArea = child:FindFirstChild("MessageArea", true)
+            local errorLabel = messageArea and messageArea:FindFirstChild("ErrorMessage", true)
+            local reason = errorLabel and errorLabel.Text or "Connection Error"
+            
+            -- Prevent the box from showing
+            child.Visible = false
+            
+            -- Show our UI
+            createJujuUI(reason)
+        end
+    end)
+end
+
+-- Universal Disconnection Detection (Server-side & System kicks)
+GuiService.ErrorMessageChanged:Connect(function(msg)
+    if msg and #msg > 0 then
+        createJujuUI(msg)
+    end
+end)
+
+-- CLIENT-SIDE HOOKS (For explicit Kick() calls)
+local mt = getrawmetatable(game)
+local oldNamecall = mt.__namecall
+setreadonly(mt, false)
+
+mt.__namecall = newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+    
+    if (method == "Kick" or method == "kick") and (self == localPlayer or self == Players) then
+        createJujuUI(args[1] or "Kicked from server")
+        return nil
+    end
+    
+    return oldNamecall(self, ...)
+end)
+
+setreadonly(mt, true)
+
+-- Direct hook
+local oldKick
+oldKick = hookfunction(localPlayer.Kick, function(self, reason)
+    createJujuUI(reason)
+    return nil
+end)
+
+-- DEBUG COMMAND
+_G.TestKick = function()
+    createJujuUI("Test kick: Your moderation ID is #12345. Moderation message: Violating safety guidelines.")
+end
+
+print("Juju-Style Kick Override Loaded!")
+print("Run _G.TestKick() to test the animations and layout.")
